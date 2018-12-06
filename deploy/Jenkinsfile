@@ -1,13 +1,14 @@
 podTemplate(label: 'jnlp-slave', cloud: 'kubernetes', containers: [
     containerTemplate(
         name: 'jnlp', 
-        image: '10.206.240.188/ops/jenkins-slave', 
+        image: '192.168.1.252/qyzh-v1/jenkins-slave4', 
         alwaysPullImage: true 
     ),
   ],
   volumes: [
     hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock'),
     hostPathVolume(mountPath: '/usr/bin/docker', hostPath: '/usr/bin/docker'),
+    hostPathVolume(mountPath: '/root/.kube', hostPath: '/home/jenkins/.kube'),
     hostPathVolume(mountPath: '/usr/local/jdk', hostPath: '/usr/local/jdk'),
     hostPathVolume(mountPath: '/usr/local/maven', hostPath: '/usr/local/maven'),
   ],
@@ -15,34 +16,43 @@ podTemplate(label: 'jnlp-slave', cloud: 'kubernetes', containers: [
 ) 
 {
   node("jnlp-slave"){
-      stage('Git Checkout'){
-         checkout([$class: 'GitSCM', branches: [[name: '${Tag}']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '17d5e646-f842-4f20-bf5f-98a3d066d167', url: 'git@10.206.240.189:/home/git/solo.git']]])
+      stage('Prepare') {
+        echo "1.Prepare Stage"
+        checkout scm
+        script {
+            build_tag = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+            if (env.BRANCH_NAME != 'master') {
+                build_tag = "${env.BRANCH_NAME}-${build_tag}"
+            }
+         }
       }
       stage('Unit Testing'){
-      	echo "Unit Testing..."
+      	echo "2.Unit Testing..."
       }
       stage('Maven Build'){
+        echo "3.Maven Build"
           sh "mvn clean package -Dmaven.test.skip=true"
       }
-      stage('Build and Push Image'){
-          sh '''
-          #echo "192.168.0.211 reg.aliangedu.com" >> /etc/hosts
-          docker login -u lizhenliang -p 4YVJdB0p48sZxpMg 10.206.240.188
-          docker build -t 10.206.240.188/project/solo:${Tag} -f deploy/Dockerfile .
-          docker push 10.206.240.188/project/solo:${Tag}
-          '''
-      }
-      stage('Deploy to K8S'){
-          sh '''
-          cd deploy 
-          sed -i "/10.206.240.188/{s/latest/${Tag}/}" deploy.yaml
-          sed -i "s/environment/${Env}/" deploy.yaml
-          ''' 
-          kubernetesDeploy configs: 'deploy/deploy.yaml', kubeConfig: [path: ''], kubeconfigId: '3d1fb8da-3957-478f-a95a-026375ff83e9', secretName: '', ssh: [sshCredentialsId: '*', sshServer: ''], textCredentials: [certificateAuthorityData: '', clientCertificateData: '', clientKeyData: '', serverUrl: 'https://']
-      }
+      stage('Build Image') {
+        echo "4.Build Docker Image Stage"
+        sh "docker build -t qyzhcaofei/solo:${build_tag} -f deploy/Dockerfile ."
+     }
+      stage('Push') {
+        echo "4.Push Docker Image Stage"
+        withCredentials([usernamePassword(credentialsId: 'dockerHub', passwordVariable: 'dockerHubPassword', usernameVariable: 'dockerHubUser')]) {
+            sh "docker login -u ${dockerHubUser} -p ${dockerHubPassword}"
+            sh "docker push qyzhcaofei/solo:${build_tag}"
+        }
+     }
+       stage('Deploy') {
+        echo "5. Deploy Stage"
+        sh "sed -i 's/<BUILD_TAG>/${build_tag}/' deploy.yaml"
+        sh "sed -i 's/<BRANCH_NAME>/${env.BRANCH_NAME}/' deploy.yaml"
+        sh "kubectl apply -f deploy.yaml --record"
+    }
       stage('Testing'){
           echo "Testing..."
       }
-  }
+   }
 }
 
