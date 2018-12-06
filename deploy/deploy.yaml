@@ -1,8 +1,8 @@
-apiVersion: apps/v1beta2 
+apiVersion: extensions/v1beta1 
 kind: Deployment
 metadata:
   name: blog-solo
-  namespace: blog
+  namespace: default
 spec:
   replicas: 3
   selector:
@@ -13,17 +13,17 @@ spec:
     metadata:
       labels:
         project: blog
-        app: solo
+        app: solo	
     spec:
       imagePullSecrets:
       - name: registry-pull-secret
       containers:
       - name: solo
-        image: 10.206.240.188/project/solo:latest
+        image: qyzhcaofei/solo:<BUILD_TAG>
         imagePullPolicy: Always
         env:
-        - name: ENV
-          value: "environment" 
+        - name: branch
+          value: <BRANCH_NAME>
         ports:
         - containerPort: 8080
           name: web
@@ -54,13 +54,63 @@ spec:
       - name: jdk
         hostPath:
           path: /usr/local/jdk
+ 
+ ---
+  
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: blog-solo
+  namespace: default
+
+---
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: blog-solo
+  namespace: default
+rules:
+  - apiGroups: ["extensions", "apps"]
+    resources: ["deployments"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create","delete","get","list","patch","update","watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create","delete","get","list","patch","update","watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get","list","watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: blog-solo
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: blog-solo
+subjects:
+  - kind: ServiceAccount
+    name: blog-solo
+    namespace: default
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: blog-solo
-  namespace: blog
+  namespace: default
   labels:
     project: blog
     app: solo
@@ -72,4 +122,5 @@ spec:
   - name: web
     port: 80
     targetPort: 8080
+    nodePort: 30006
   type: NodePort
