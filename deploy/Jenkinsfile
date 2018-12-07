@@ -47,7 +47,7 @@ podTemplate(label: 'jnlp-slave', cloud: 'kubernetes', containers: [
         echo "5. Deploy Stage"
         sh "sed -i 's/<BUILD_TAG>/${build_tag}/' deploy.yaml"
         sh "sed -i 's/<BRANCH_NAME>/${env.BRANCH_NAME}/' deploy.yaml"
-        sh "kubectl --kubeconfig=/root/.kube/config create -f deploy.yaml --record"
+        sh "kubectl --kubeconfig=/root/.kube/config apply -f deploy.yaml --record"
     }
       stage('Testing'){
           echo "Testing..."
